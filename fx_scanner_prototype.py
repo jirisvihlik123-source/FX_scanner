@@ -3,7 +3,9 @@ from PIL import Image
 import io
 import base64
 
-# JS pro zachycení vloženého obrázku
+# ============================
+#  ENABLE CTRL+V IMAGE PASTE
+# ============================
 paste_js = """
 <script>
 document.addEventListener('paste', function(event) {
@@ -27,13 +29,16 @@ document.addEventListener('paste', function(event) {
 
 st.markdown(paste_js, unsafe_allow_html=True)
 
-# Neviditelný input na vložený obrázek
-pasted_image = st.text_input("Sem můžeš vložit obrázek pomocí CTRL + V", key="paste-image-input")
+# Skrytý input pro uložený base64 obrázek
+pasted_base64 = st.text_input(
+    "Sem můžeš vložit obrázek pomocí CTRL + V",
+    key="paste-image-input"
+)
 
+# Konverze base64 → PIL Image
 image_from_paste = None
-if pasted_image.startswith("data:image"):
-    header, encoded = pasted_image.split(",", 1)
-    image_data = base64.b64decode(encoded)
-    image_from_paste = Image.open(io.BytesIO(imag
-
+if pasted_base64 and pasted_base64.startswith("data:image"):
+    header, encoded = pasted_base64.split(",", 1)
+    image_bytes = base64.b64decode(encoded)
+    image_from_paste = Image.open(io.BytesIO(image_bytes))
 
