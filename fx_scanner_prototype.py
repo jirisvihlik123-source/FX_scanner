@@ -5,30 +5,31 @@ from PIL import Image
 # ZÁKLADNÍ NASTAVENÍ STRÁNKY
 # ==========================
 st.set_page_config(
-    page_title="FX Chart Assistant",
+    page_title="FX scanner",
     layout="wide"
 )
 
-st.title("📈 FX Chart Assistant – prototyp")
+st.title("📈 FX scanner – alfa 1.0")
 st.write(
     "Nahraj screenshot grafu (MT4/MT5/TradingView) a appka ti k němu ukáže demo analýzu.\n"
-    "_Zatím jen ukázková verze – bez reálné AI logiky._"
+    "ukázková verze"
 )
 
-st.sidebar.header("ℹ️ Jak to použít")
+st.sidebar.header("Jak to použít")
 st.sidebar.write(
     """
-    **1. Udělej screenshot grafu**  
+    **1. Udělej screenshot grafu(pro vojtu: screenshot=snímek obrazovky**  
     - MT4/MT5 / TradingView / cokoliv.
 
     **2. Ulož ho jako obrázek (PNG/JPG).**  
     - Windows: `Win + Shift + S` → uložit.  
     - Mac: `CMD + Shift + 4` → obrázek na plochu.
 
-    **3. Nahraj ho sem do aplikace.**
+    **3. Nahraj ho sem do FX_scanner.**
 
     Zatím se zobrazuje jen demo textová analýza.
-    Později přidáme reálnou AI logiku (trend, S/R, SL/TP).
+    Později přidáme: -reálnou AI logiku (trend, S/R, SL/TP).
+                     -grafický popis obrázku
     """
 )
 
@@ -46,7 +47,7 @@ uploaded_file = st.file_uploader(
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("🖼 Zobrazení grafu")
+    st.subheader("Zobrazení grafu")
 
     if uploaded_file is not None:
         image = Image.open(uploaded_file)
@@ -55,12 +56,12 @@ with col1:
         st.info("Zatím není žádný obrázek. Nahraj screenshot grafu nahoře.")
 
 with col2:
-    st.subheader("🧠 Demo analýza grafu")
+    st.subheader("Demo analýza grafu")
 
     if uploaded_file is not None:
         st.write(
             """
-            _Poznámka: Tohle je zatím jen ukázkový text, žádná skutečná AI analýza._
+            _Poznámka: Tohle je zatím jen demo analýza._
 
             **Detekce (fake demo):**
             - Trend: mírný uptrend (jen příklad).
@@ -71,10 +72,11 @@ with col2:
             - TP2: druhé výraznější swing high.
 
             **Plán do další verze:**
-            - vzít obrázek → poslat do AI / logiky,
+            - Analýza dle AI,
             - identifikovat trend a S/R zóny,
             - navrhnout konkrétní SL/TP podle volatility a timeframe.
             """
         )
     else:
         st.info("Až nahraješ obrázek, zobrazí se tady demo analýza.")
+
