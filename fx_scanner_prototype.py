@@ -121,5 +121,3 @@ with col2:
         )
     else:
         st.info("Až nahraješ nebo vložíš obrázek, zobrazí se tady demo analýza.")
-
-
