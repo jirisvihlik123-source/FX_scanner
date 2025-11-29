@@ -1,9 +1,7 @@
 import streamlit as st
 from PIL import Image
 
-# ==========================
-# ZÁKLADNÍ NASTAVENÍ STRÁNKY
-# ==========================
+
 st.set_page_config(
     page_title="FX scanner",
     layout="wide"
@@ -18,7 +16,7 @@ st.write(
 st.sidebar.header("Jak to použít")
 st.sidebar.write(
     """
-    **1. Udělej screenshot grafu(pro vojtu: screenshot=snímek obrazovky**  
+    **1. Udělej screenshot grafu(pro vojtu: screenshot=snímek obrazovky)**  
     - MT4/MT5 / TradingView / cokoliv.
 
     **2. Ulož ho jako obrázek (PNG/JPG).**  
@@ -33,17 +31,13 @@ st.sidebar.write(
     """
 )
 
-# ==========================
-#  KLASICKÝ UPLOAD SOUBORU
-# ==========================
+
 uploaded_file = st.file_uploader(
     "Nahraj screenshot grafu (PNG / JPG)",
     type=["png", "jpg", "jpeg"]
 )
 
-# ==========================
-#  LAYOUT STRÁNKY
-# ==========================
+
 col1, col2 = st.columns(2)
 
 with col1:
@@ -79,4 +73,5 @@ with col2:
         )
     else:
         st.info("Až nahraješ obrázek, zobrazí se tady demo analýza.")
+
 
