@@ -1,3 +1,5 @@
+
+
 🔥 ZPRÁVA PRO DRUHÝ CHAT (KOPÍROVAT CELÉ)
 Ahoj, tady je shrnutí, kde jsme skončili s vývojem mojí aplikace FX Chart Assistant.
 Potřebuju, aby ses přesně navázal na to, co už je hotové.
