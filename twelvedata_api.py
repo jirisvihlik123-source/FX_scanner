@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from typing import Tuple, Dict
 
-API_KEY = "TVŮJ_API_KLIC"  # nahraď svým klíčem
+API_KEY = "8f99b35c39634de89f340a1604b355f6"  # nahraď svým klíčem
 
 # Helper: normalizace symbolu
 def normalize_symbol(pair: str) -> str:
