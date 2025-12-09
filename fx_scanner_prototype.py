@@ -9,12 +9,24 @@ import numpy as np
 # ZÁKLADNÍ NASTAVENÍ STRÁNKY
 # ======================================
 st.set_page_config(
-    page_title="FX Chart Assistant",
+    page_title="FX Chart Assistant – screenshot + data",
     layout="wide"
 )
 
 st.title("FX Chart Assistant – screenshot + data režim")
 st.write("Vyber režim analýzy.")
+
+# ======================================
+# Ověření API klíče při startu
+# ======================================
+try:
+    test_df = td.get_ohlc("EURUSD", "1min")
+except Exception as e:
+    st.error(
+        f"❌ Chyba API klíče: {e}\n\n"
+        "Zkontrolujte, že máte správný a aktivní API klíč v souboru `twelvedata_api.py`."
+    )
+    st.stop()  # zastaví zbytek aplikace, pokud klíč není validní
 
 # ======================================
 # REŽIM VÝBĚRU
@@ -25,27 +37,24 @@ mode = st.radio(
 )
 
 # ======================================
-# POMOCNÉ FUNKCE PRO KRESLENÍ
+# FUNKCE PRO KRESLENÍ
 # ======================================
 def annotate_chart_with_strategy(image, direction, strategy, rrr):
     img = image.convert("RGBA")
     draw = ImageDraw.Draw(img)
     w, h = img.size
 
-    # základní úrovně pro LONG
     sl_y = int(h * 0.78)
     entry_y = int(h * 0.60)
     tp1_y = int(h * 0.40)
     tp2_y = int(h * 0.25)
 
-    # SHORT zrcadlení
     if direction.startswith("Short"):
         sl_y = int(h * 0.22)
         entry_y = int(h * 0.40)
         tp1_y = int(h * 0.60)
         tp2_y = int(h * 0.75)
 
-    # Breakout preset
     if strategy == "Breakout - pruraz":
         entry_y = int(h * 0.50)
         if direction.startswith("Long"):
@@ -55,7 +64,6 @@ def annotate_chart_with_strategy(image, direction, strategy, rrr):
             sl_y = int(h * 0.35)
             tp1_y = int(h * 0.62)
 
-    # Range preset
     if strategy == "Range - obchod v pasmu":
         sl_y = int(h * 0.70)
         entry_y = int(h * 0.60)
@@ -98,7 +106,6 @@ def detect_currency_pair(image):
 
     if match:
         return match.group(1).replace("/", "").upper()
-
     return None
 
 # ======================================
@@ -109,7 +116,9 @@ if mode == "Screenshot analýza":
     st.sidebar.header("Nastavení strategie")
 
     direction = st.sidebar.radio("Směr obchodu:", ["Long (buy)", "Short (sell)"])
-    strategy = st.sidebar.selectbox("Strategie:", ["Swing - pullback", "Breakout - pruraz", "Range - obchod v pasmu"])
+    strategy = st.sidebar.selectbox(
+        "Strategie:", ["Swing - pullback", "Breakout - pruraz", "Range - obchod v pasmu"]
+    )
     rrr = st.sidebar.slider("RRR:", 1.0, 4.0, 2.0, 0.5)
 
     uploaded_file = st.file_uploader("Nahraj screenshot grafu:", type=["png", "jpg", "jpeg"])
@@ -133,51 +142,40 @@ if mode == "Screenshot analýza":
             st.info("Nahraj screenshot a stiskni tlačítko.")
 
 # ======================================
-# REŽIM 2 — DATA ANALÝZA (TwelveData)
+# REŽIM 2 — DATA ANALÝZA
 # ======================================
 else:
     st.header("Data analýza (OCR + TwelveData)")
     uploaded_file = st.file_uploader("Nahraj screenshot:", type=["png", "jpg", "jpeg"])
     timeframe = st.selectbox("Timeframe:", ["1min", "5min", "15min", "1h", "4h"])
     indicators = st.multiselect(
-        "Vyber indikátory:",
-        ["EMA50", "EMA200", "RSI", "ADX"],
-        default=["EMA50", "EMA200", "RSI", "ADX"]
+        "Vyber indikátory:", ["EMA50", "EMA200", "RSI", "ADX"], default=["EMA50","EMA200","RSI","ADX"]
     )
 
     analyze_button = st.button("Analyzovat")
-
     supported_pairs = ["EURUSD", "USDJPY", "GBPUSD", "USDCHF", "AUDUSD", "USDCAD", "NZDUSD"]
 
     if uploaded_file and analyze_button:
         image = Image.open(uploaded_file)
 
-        # OCR detekce
         detected_pair = detect_currency_pair(image)
-
-        # SELECTBOX pro manuální volbu páru
         pair = st.selectbox(
             "Vyber měnový pár (OCR navrhlo: {})".format(detected_pair if detected_pair else "nenalezeno"),
             options=supported_pairs,
             index=supported_pairs.index(detected_pair) if detected_pair in supported_pairs else 0
         )
 
-        # kontrola dostupnosti ve FREE verzi
-        if not td.validate_pair(pair):
-            st.error(f"❌ Měnový pár **{pair}** není dostupný ve FREE verzi TwelveData.")
-            st.info("Podporované páry: EURUSD, USDJPY, GBPUSD, USDCHF, AUDUSD, USDCAD, NZDUSD")
-        else:
-            try:
-                df = td.get_ohlc(pair, timeframe)
-            except Exception as e:
-                st.error(f"Chyba při načítání dat z API: {e}")
-                st.stop()
+        try:
+            df = td.get_ohlc(pair, timeframe)
+        except Exception as e:
+            st.error(f"Chyba při načítání dat z API: {e}")
+            st.stop()
 
-            trend, signal, ind_values = td.determine_trend(df)
-            sl, tp1, tp2 = td.calculate_sl_tp(df, signal)
+        trend, signal, ind_values = td.determine_trend(df)
+        sl, tp1, tp2 = td.calculate_sl_tp(df, signal)
 
-            st.success("Analýza dokončena!")
-            st.markdown(f"""
+        st.success("Analýza dokončena!")
+        st.markdown(f"""
 ### 📊 Výsledky analýzy
 
 **Trend:** {trend}  
@@ -185,11 +183,11 @@ else:
 
 ### Indikátory:
 """)
-            for k, v in ind_values.items():
-                if k in indicators:
-                    st.write(f"- **{k}:** {v:.4f}")
+        for k, v in ind_values.items():
+            if k in indicators:
+                st.write(f"- **{k}:** {v:.4f}")
 
-            st.markdown(f"""
+        st.markdown(f"""
 ### Úrovně SL/TP
 - **SL:** {sl if sl else "–"}
 - **TP1:** {tp1 if tp1 else "–"}
