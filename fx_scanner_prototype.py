@@ -199,8 +199,13 @@ Až vlozime API klic, zde bude:
 - SL a TP vypocet  
 - Mini graf  
 
-Kod uz je pripraveny – ceka na API key.
-""")
+import twelvedata_api as td
+
+df = td.get_ohlc(pair, timeframe)
+trend, signal, indicators = td.determine_trend(df)
+sl, tp1, tp2 = td.calculate_sl_tp(df, signal)
+
+
 
 
 
