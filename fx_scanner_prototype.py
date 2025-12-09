@@ -17,26 +17,6 @@ st.title("FX Chart Assistant – screenshot + data režim")
 st.write("Vyber režim analýzy.")
 
 # ======================================
-# Ověření API klíče při startu
-# ======================================
-try:
-    test_df = td.get_ohlc("EURUSD", "1min")
-except Exception as e:
-    st.error(
-        f"❌ Chyba API klíče: {e}\n\n"
-        "Zkontrolujte, že máte správný a aktivní API klíč v souboru `twelvedata_api.py`."
-    )
-    st.stop()  # zastaví zbytek aplikace, pokud klíč není validní
-
-# ======================================
-# REŽIM VÝBĚRU
-# ======================================
-mode = st.radio(
-    "Vyber režim:",
-    ["Screenshot analýza", "Data analýza"]
-)
-
-# ======================================
 # FUNKCE PRO KRESLENÍ
 # ======================================
 def annotate_chart_with_strategy(image, direction, strategy, rrr):
@@ -109,6 +89,11 @@ def detect_currency_pair(image):
     return None
 
 # ======================================
+# REŽIMY
+# ======================================
+mode = st.radio("Vyber režim:", ["Screenshot analýza", "Data analýza"])
+
+# ======================================
 # REŽIM 1 — SCREENSHOT ANALÝZA
 # ======================================
 if mode == "Screenshot analýza":
@@ -146,50 +131,47 @@ if mode == "Screenshot analýza":
 # ======================================
 else:
     st.header("Data analýza (OCR + TwelveData)")
+
     uploaded_file = st.file_uploader("Nahraj screenshot:", type=["png", "jpg", "jpeg"])
     timeframe = st.selectbox("Timeframe:", ["1min", "5min", "15min", "1h", "4h"])
     indicators = st.multiselect(
         "Vyber indikátory:", ["EMA50", "EMA200", "RSI", "ADX"], default=["EMA50","EMA200","RSI","ADX"]
     )
-
     analyze_button = st.button("Analyzovat")
+
     supported_pairs = ["EURUSD", "USDJPY", "GBPUSD", "USDCHF", "AUDUSD", "USDCAD", "NZDUSD"]
 
     if uploaded_file and analyze_button:
         image = Image.open(uploaded_file)
-
         detected_pair = detect_currency_pair(image)
+
         pair = st.selectbox(
             "Vyber měnový pár (OCR navrhlo: {})".format(detected_pair if detected_pair else "nenalezeno"),
             options=supported_pairs,
             index=supported_pairs.index(detected_pair) if detected_pair in supported_pairs else 0
         )
 
+        # =====================================================
+        # VOLÁNÍ API A ZACHYTENÍ CHYB
+        # =====================================================
         try:
             df = td.get_ohlc(pair, timeframe)
-        except Exception as e:
-            st.error(f"Chyba při načítání dat z API: {e}")
-            st.stop()
+            trend, signal, ind_values = td.determine_trend(df)
+            sl, tp1, tp2 = td.calculate_sl_tp(df, signal)
 
-        trend, signal, ind_values = td.determine_trend(df)
-        sl, tp1, tp2 = td.calculate_sl_tp(df, signal)
-
-        st.success("Analýza dokončena!")
-        st.markdown(f"""
-### 📊 Výsledky analýzy
+            st.success(f"Rozpoznaný pár: {pair}")
+            st.markdown(f"""
+### Výsledek Data analýza
 
 **Trend:** {trend}  
-**Signál:** {signal}
+**Signal:** {signal}  
 
-### Indikátory:
-""")
-        for k, v in ind_values.items():
-            if k in indicators:
-                st.write(f"- **{k}:** {v:.4f}")
+**Indikátory:**  
+{chr(10).join([f"- {k}: {v:.5f}" for k,v in ind_values.items() if k in indicators])}
 
-        st.markdown(f"""
-### Úrovně SL/TP
-- **SL:** {sl if sl else "–"}
-- **TP1:** {tp1 if tp1 else "–"}
-- **TP2:** {tp2 if tp2 else "–"}
-""")
+**SL:** {sl:.5f if sl else '–'}  
+**TP1:** {tp1:.5f if tp1 else '–'}  
+**TP2:** {tp2:.5f if tp2 else '–'}
+            """)
+        except Exception as e:
+            st.error(f"Chyba při načítání dat z API: {e}")
