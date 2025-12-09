@@ -1,30 +1,18 @@
 import requests
 import pandas as pd
 
-API_KEY = "8f99b35c39634de89f340a1604b355f6"  # nahraď svým klíčem
+# ======================================
+# TVŮJ API KLÍČ – nahraď svým platným klíčem
+# ======================================
+API_KEY = "8f99b35c39634de89f340a1604b355f6"
 
-# ----------------------------------------------------
-# 1) Kontrolní seznam párů, které TwelveData FREE podporuje
-# ----------------------------------------------------
-SUPPORTED_PAIRS = {
-    "EURUSD", "USDJPY", "GBPUSD", "USDCHF",
-    "AUDUSD", "USDCAD", "NZDUSD"
-}
-
-def validate_pair(pair: str):
-    """
-    Vrací True/False podle toho, zda TwelveData FREE plan podporuje pár.
-    """
-    return pair.upper() in SUPPORTED_PAIRS
-
-
-# ----------------------------------------------------
-# 2) Download dat s bezpečnou kontrolou chyb
-# ----------------------------------------------------
+# ======================================
+# FUNKCE PRO DATA
+# ======================================
 def get_ohlc(pair: str, interval: str, outputsize=100):
-    if not validate_pair(pair):
-        raise ValueError(f"Měnový pár {pair} není dostupný ve FREE verzi TwelveData API.")
-
+    """
+    Stáhne OHLC data z TwelveData API.
+    """
     url = "https://api.twelvedata.com/time_series"
     params = {
         "symbol": pair,
@@ -33,14 +21,11 @@ def get_ohlc(pair: str, interval: str, outputsize=100):
         "outputsize": outputsize,
         "format": "JSON"
     }
-
     resp = requests.get(url, params=params)
     data = resp.json()
 
-    # API error message handling
     if "values" not in data:
-        msg = data.get("message", "Neznámá chyba API")
-        raise ValueError(f"Chyba v API: {msg}")
+        raise ValueError(f"Chyba v API: {data}")
 
     df = pd.DataFrame(data["values"])[::-1]
     df[["open","high","low","close","volume"]] = df[["open","high","low","close","volume"]].astype(float)
@@ -48,10 +33,9 @@ def get_ohlc(pair: str, interval: str, outputsize=100):
     df.set_index("datetime", inplace=True)
     return df
 
-
-# ----------------------------------------------------
-# 3) Indikátory
-# ----------------------------------------------------
+# ======================================
+# VÝPOČET INDIKÁTORŮ
+# ======================================
 def calculate_ema(df, period=50):
     return df["close"].ewm(span=period, adjust=False).mean()
 
@@ -67,31 +51,23 @@ def calculate_rsi(df, period=14):
 
 def calculate_adx(df, period=14):
     df = df.copy()
-    df["TR"] = df.apply(
-        lambda x: max(
-            x["high"]-x["low"],
-            abs(x["high"]-x["close"]),
-            abs(x["low"]-x["close"])
-        ), axis=1
+    df["TR"] = df[["high","low","close"]].apply(
+        lambda x: max(x["high"]-x["low"], abs(x["high"]-x["close"]), abs(x["low"]-x["close"])), axis=1
     )
-
     df["+DM"] = df["high"].diff()
     df["-DM"] = df["low"].diff().abs()
-
-    df["+DM"] = df["+DM"].where((df["+DM"] > df["-DM"]) & (df["+DM"] > 0), 0)
-    df["-DM"] = df["-DM"].where((df["-DM"] > df["+DM"]) & (df["-DM"] > 0), 0)
-
+    df["+DM"] = df["+DM"].where((df["+DM"]>df["-DM"]) & (df["+DM"]>0), 0)
+    df["-DM"] = df["-DM"].where((df["-DM"]>df["+DM"]) & (df["-DM"]>0), 0)
     atr = df["TR"].rolling(period).mean()
     plus_di = 100 * (df["+DM"].rolling(period).sum() / atr)
     minus_di = 100 * (df["-DM"].rolling(period).sum() / atr)
-
     adx = abs(plus_di - minus_di) / (plus_di + minus_di) * 100
-    return adx.rolling(period).mean()
+    adx = adx.rolling(period).mean()
+    return adx
 
-
-# ----------------------------------------------------
-# 4) Trend a signál
-# ----------------------------------------------------
+# ======================================
+# TRENDOVÉ FUNKCE
+# ======================================
 def determine_trend(df):
     ema50 = calculate_ema(df, 50).iloc[-1]
     ema200 = calculate_ema(df, 200).iloc[-1]
@@ -110,10 +86,9 @@ def determine_trend(df):
 
     return trend, signal, {"EMA50": ema50, "EMA200": ema200, "RSI": rsi, "ADX": adx}
 
-
-# ----------------------------------------------------
-# 5) Výpočet SL/TP
-# ----------------------------------------------------
+# ======================================
+# VÝPOČET SL, TP1, TP2
+# ======================================
 def calculate_sl_tp(df, signal):
     last_close = df["close"].iloc[-1]
     atr = df["high"].rolling(14).max().iloc[-1] - df["low"].rolling(14).min().iloc[-1]
@@ -127,6 +102,6 @@ def calculate_sl_tp(df, signal):
         tp1 = last_close - atr
         tp2 = last_close - 2 * atr
     else:
-        return None, None, None
+        sl = tp1 = tp2 = None
 
     return sl, tp1, tp2
