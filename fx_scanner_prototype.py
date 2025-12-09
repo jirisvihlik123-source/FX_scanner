@@ -1,8 +1,9 @@
 import streamlit as st
 from PIL import Image, ImageDraw
 import twelvedata_api as td
-import pytesseract
+import easyocr
 import re
+import numpy as np
 
 # ======================================
 # ZAKLADNI NASTAVENI STRANKY
@@ -83,16 +84,27 @@ def annotate_chart_with_strategy(image, direction, strategy, rrr):
 **ENTRY** – logicka zona vstupu.  
 **TP1 + TP2** – cilovy profit.
 """
-
     return img, description
 
+# ======================================
+# REZIM 2 – DATA ANALYZA (EasyOCR)
+# ======================================
 def detect_currency_pair(image):
-    text = pytesseract.image_to_string(image)
+    """
+    OCR detekce měnového páru z obrázku pomocí EasyOCR.
+    """
+    reader = easyocr.Reader(['en'])
+    img_array = np.array(image)
+    results = reader.readtext(img_array)
+    text = " ".join([res[1] for res in results])
     match = re.search(r'\b([A-Z]{3}/[A-Z]{3})\b', text)
     if match:
         return match.group(1).replace("/", "").upper()
     return None
 
+# ======================================
+# Streamlit layout
+# ======================================
 if mode == "Screenshot analyza":
     st.header("Screenshot analyza")
     st.sidebar.header("Nastaveni strategie")
@@ -120,9 +132,6 @@ if mode == "Screenshot analyza":
         else:
             st.info("Nahraj screenshot a klikni na tlacitko.")
 
-# ======================================
-# REZIM 2 – DATA ANALYZA
-# ======================================
 else:
     st.header("Data analyza (TwelveData)")
     uploaded_file = st.file_uploader("Nahraj screenshot grafu:", type=["png", "jpg", "jpeg"])
@@ -156,3 +165,4 @@ else:
                 """)
             except Exception as e:
                 st.error(f"Chyba při načítání nebo výpočtu: {e}")
+
