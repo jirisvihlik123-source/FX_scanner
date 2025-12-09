@@ -1,7 +1,7 @@
 import requests
 import pandas as pd
 
-API_KEY = "8f99b35c39634de89f340a1604b355f6C"  # nahraď svým klíčem
+API_KEY = "8f99b35c39634de89f340a1604b355f6"  # nahraď svým klíčem
 
 # ----------------------------------------------------
 # 1) Kontrolní seznam párů, které TwelveData FREE podporuje
