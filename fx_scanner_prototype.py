@@ -169,6 +169,15 @@ else:
         ["EMA trend", "RSI oblasti", "ADX sila trendu"]
     )
 
+    st.subheader("Vyber indikátory k vykreslení")
+
+ema50 = st.checkbox("EMA 50", value=True)
+ema200 = st.checkbox("EMA 200", value=True)
+rsi = st.checkbox("RSI 14", value=True)
+adx = st.checkbox("ADX", value=True)
+macd = st.checkbox("MACD", value=False)
+
+
     go = st.button("Analyzovat (fake, bez API)")
 
     if go:
@@ -192,5 +201,6 @@ Až vlozime API klic, zde bude:
 
 Kod uz je pripraveny – ceka na API key.
 """)
+
 
 
