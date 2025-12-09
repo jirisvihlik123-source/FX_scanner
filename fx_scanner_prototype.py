@@ -1,5 +1,20 @@
+import sys
+import os
 import streamlit as st
 from PIL import Image, ImageDraw
+
+# ======================================================
+# Přidání složky s twelvedata_api.py do sys.path
+# ======================================================
+sys.path.append(os.path.join(os.path.dirname(__file__), "api"))
+from twelvedata_api import (
+    get_ohlc,
+    calculate_ema,
+    calculate_rsi,
+    calculate_adx,
+    determine_trend,
+    calculate_sl_tp
+)
 
 # ======================================
 # ZAKLADNI NASTAVENI STRANKY
@@ -11,7 +26,7 @@ st.set_page_config(
 
 st.title("FX Chart Assistant – screenshot + data rezim")
 st.write(
-    "Vyber rezim analyzy. Screenshot rezim funguje, Data rezim je pripraveny a API se prida pozdeji."
+    "Vyber rezim analyzy. Screenshot rezim funguje, Data rezim je pripraveny s TwelveData API."
 )
 
 # ======================================
@@ -19,7 +34,7 @@ st.write(
 # ======================================
 mode = st.radio(
     "Vyber rezim:",
-    ["Screenshot analyza", "Data analyza (TwelveData – zatim bez API)"]
+    ["Screenshot analyza", "Data analyza"]
 )
 
 # =============================================================
@@ -64,7 +79,6 @@ if mode == "Screenshot analyza":
     # ============ FUNKCE PRO VYKRESLENI ZON ===============
     # =====================================================
     def annotate_chart_with_strategy(image, direction, strategy, rrr):
-
         img = image.convert("RGBA")
         draw = ImageDraw.Draw(img)
         w, h = img.size
@@ -155,8 +169,7 @@ Poznamka: Zona je relativni k obrazku (demo).
 # =============================================================
 else:
 
-    st.header("Data analyza (TwelveData – zatim bez API)")
-    st.write("Tento rezim je funkcni UI, API se prida az budete mit klic.")
+    st.header("Data analyza (TwelveData API)")
 
     pair = st.text_input("Menovy par:", "EUR/USD")
     timeframe = st.selectbox(
@@ -164,46 +177,46 @@ else:
         ["1min", "5min", "15min", "1h", "4h"]
     )
 
-    strat = st.selectbox(
-        "Strategie:",
-        ["EMA trend", "RSI oblasti", "ADX sila trendu"]
-    )
-
     st.subheader("Vyber indikátory k vykreslení")
+    ema50 = st.checkbox("EMA 50", value=True)
+    ema200 = st.checkbox("EMA 200", value=True)
+    rsi = st.checkbox("RSI 14", value=True)
+    adx = st.checkbox("ADX", value=True)
+    macd = st.checkbox("MACD", value=False)
 
-ema50 = st.checkbox("EMA 50", value=True)
-ema200 = st.checkbox("EMA 200", value=True)
-rsi = st.checkbox("RSI 14", value=True)
-adx = st.checkbox("ADX", value=True)
-macd = st.checkbox("MACD", value=False)
-
-
-    go = st.button("Analyzovat (fake, bez API)")
+    go = st.button("Analyzovat")
 
     if go:
-        st.success("API zatim vypnute — cekame na API klic od Vojty.")
+        try:
+            df = get_ohlc(pair, timeframe)
 
-        st.markdown(f"""
-### Data analyza (fake vystup)
+            if ema50:
+                df["EMA50"] = calculate_ema(df, 50)
+            if ema200:
+                df["EMA200"] = calculate_ema(df, 200)
+            if rsi:
+                df["RSI14"] = calculate_rsi(df, 14)
+            if adx:
+                df["ADX14"] = calculate_adx(df, 14)
 
-**Par:** {pair}  
-**TF:** {timeframe}  
-**Strategie:** {strat}
+            trend_signal, trend_strength, indicators = determine_trend(df)
+            sl, tp1, tp2 = calculate_sl_tp(df, trend_signal)
 
-Až vlozime API klic, zde bude:
+            st.subheader("Výsledky")
+            st.markdown(f"**Trend:** {trend_signal} (Síla trendu: {trend_strength})")
+            st.markdown(f"**Stop Loss:** {sl}")
+            st.markdown(f"**Take Profit 1:** {tp1}")
+            st.markdown(f"**Take Profit 2:** {tp2}")
 
-- EMA trend  
-- RSI hodnoty  
-- ADX sila trendu  
-- Navrh LONG / SHORT  
-- SL a TP vypocet  
-- Mini graf  
+            st.subheader("Poslední data s indikátory")
+            st.dataframe(df.tail(20))
 
-import twelvedata_api as td
+        except Exception as e:
+            st.error(f"Chyba při načítání nebo výpočtu: {e}")
 
-df = td.get_ohlc(pair, timeframe)
 trend, signal, indicators = td.determine_trend(df)
 sl, tp1, tp2 = td.calculate_sl_tp(df, signal)
+
 
 
 
