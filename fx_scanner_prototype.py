@@ -4,6 +4,7 @@ import twelvedata_api as td
 import easyocr
 import re
 import numpy as np
+import time
 
 # ======================================
 # ZAKLADNI NASTAVENI STRANKY
@@ -15,6 +16,28 @@ st.set_page_config(
 
 st.title("FX Chart Assistant – screenshot + data rezim")
 st.write("Vyber rezim analyzy.")
+
+# ======================================
+# NACTENI OCR JEDNOU (CACHE)
+# ======================================
+@st.cache_resource(show_spinner=True)
+def load_ocr():
+    # EasyOCR reader se vytvori jednou; trva to nekolik vterin
+    return easyocr.Reader(['en'], gpu=False)
+
+ocr_reader = load_ocr()
+
+# ======================================
+# Pomocne: ochrana proti spam klikum
+# ======================================
+if "processing" not in st.session_state:
+    st.session_state.processing = False
+
+def start_processing():
+    st.session_state.processing = True
+
+def stop_processing():
+    st.session_state.processing = False
 
 # ======================================
 # REZIMY
@@ -91,15 +114,29 @@ def annotate_chart_with_strategy(image, direction, strategy, rrr):
 # ======================================
 def detect_currency_pair(image):
     """
-    OCR detekce měnového páru z obrázku pomocí EasyOCR.
+    OCR detekce měnového páru z obrázku pomocí EasyOCR (pouze eng).
+    Vraci symbol v tvaru 'EURUSD' nebo None.
     """
-    reader = easyocr.Reader(['en'])
-    img_array = np.array(image)
-    results = reader.readtext(img_array)
-    text = " ".join([res[1] for res in results])
-    match = re.search(r'\b([A-Z]{3}/[A-Z]{3})\b', text)
-    if match:
-        return match.group(1).replace("/", "").upper()
+    # Prevod PIL -> numpy
+    img_array = np.array(image.convert("RGB"))
+    # cteme text
+    try:
+        results = ocr_reader.readtext(img_array)
+    except Exception as e:
+        # OCR selhalo
+        st.error(f"OCR chyba: {e}")
+        return None
+
+    text = " ".join([res[1] for res in results]).upper()
+    # hledame patterny: EUR/USD nebo EURUSD
+    m = re.search(r'\b([A-Z]{3}/[A-Z]{3})\b', text)
+    if m:
+        return m.group(1).replace("/", "")
+    m2 = re.search(r'\b([A-Z]{6})\b', text)
+    if m2:
+        cand = m2.group(1)
+        # jednoduchá validace: rozdělit na 3+3
+        return cand
     return None
 
 # ======================================
@@ -137,32 +174,70 @@ else:
     uploaded_file = st.file_uploader("Nahraj screenshot grafu:", type=["png", "jpg", "jpeg"])
     timeframe = st.selectbox("Timeframe:", ["1min", "5min", "15min", "1h", "4h"])
     indicators = st.multiselect("Vyber indikátory:", ["EMA50", "EMA200", "RSI14", "ADX"], default=["EMA50","EMA200","RSI14","ADX"])
-    analyze_button = st.button("Analyzovat")
+
+    # analyze button je disabled pokud se OCR jeste inicializuje nebo pokud zpracovani bezi
+    analyze_button = st.button("Analyzovat", disabled=(ocr_reader is None or st.session_state.processing))
 
     if uploaded_file and analyze_button:
-        image = Image.open(uploaded_file)
-        pair = detect_currency_pair(image)
-        if not pair:
-            st.error("Nepodařilo se rozpoznat měnový pár z obrázku.")
-        else:
+        # nastavit processing aby uzivatel nemohl spamovat
+        start_processing()
+        with st.spinner("Provádím OCR a stahuji data..."):
             try:
-                df = td.get_ohlc(pair, timeframe)
-                trend, signal, ind_values = td.determine_trend(df)
-                sl, tp1, tp2 = td.calculate_sl_tp(df, signal)
-                st.success(f"Rozpoznaný pár: {pair}")
-                st.markdown(f"""
+                image = Image.open(uploaded_file)
+                pair = detect_currency_pair(image)
+                if not pair:
+                    st.error("Nepodařilo se rozpoznat měnový pár z obrázku. Zkus nahrát čistší screenshot nebo zvol pár ručně.")
+                    stop_processing()
+                else:
+                    # normalizace symbolu
+                    pair_norm = pair.replace("/", "").replace(" ", "").upper()
+                    # zavolani API s chybovým ošetřením
+                    try:
+                        df = td.get_ohlc(pair_norm, timeframe)
+                    except ValueError as e:
+                        st.error(f"Chyba při načítání dat z API: {e}")
+                        stop_processing()
+                    except Exception as e:
+                        st.error(f"Neočekávaná chyba při volání API: {e}")
+                        stop_processing()
+                    else:
+                        try:
+                            trend, signal, ind_values = td.determine_trend(df)
+                            sl, tp1, tp2 = td.calculate_sl_tp(df, signal, aggressive=True)  # agresivni volba B
+                            # správné formátování hodnot
+                            sl_val  = f"{sl:.5f}" if sl is not None else "–"
+                            tp1_val = f"{tp1:.5f}" if tp1 is not None else "–"
+                            tp2_val = f"{tp2:.5f}" if tp2 is not None else "–"
+
+                            st.success(f"Rozpoznaný pár: {pair_norm}")
+                            # vypsat indikátory jen vybrane
+                            ind_lines = []
+                            for k, v in ind_values.items():
+                                if k in indicators:
+                                    ind_lines.append(f"- {k}: {v:.5f}")
+                            ind_text = "\n".join(ind_lines) if ind_lines else "Žádné indikátory vybrány."
+
+                            st.markdown(f"""
 ### Výsledek Data analyza
 
 **Trend:** {trend}  
 **Signal:** {signal}  
 
 **Indikátory:**  
-{chr(10).join([f"- {k}: {v:.5f}" for k,v in ind_values.items() if k in indicators])}
+{ind_text}
 
-**SL:** {sl:.5f if sl else '–'}  
-**TP1:** {tp1:.5f if tp1 else '–'}  
-**TP2:** {tp2:.5f if tp2 else '–'}
-                """)
+**SL:** {sl_val}  
+**TP1:** {tp1_val}  
+**TP2:** {tp2_val}
+                            """)
+                        except Exception as e:
+                            st.error(f"Chyba při výpočtech: {e}")
+                        finally:
+                            stop_processing()
             except Exception as e:
+                st.error(f"Chyba zpracování obrázku: {e}")
+                stop_processing()
+
                 st.error(f"Chyba při načítání nebo výpočtu: {e}")
+
 
