@@ -1,21 +1,15 @@
 import requests
 import pandas as pd
 
-# ======================================
-# TVŮJ API KLÍČ – nahraď svým platným klíčem
-# ======================================
-API_KEY = "8f99b35c39634de89f340a1604b355f6"
+API_KEY = "8f99b35c39634de89f340a1604b355f6"  # nahraď svým klíčem
 
-# ======================================
-# FUNKCE PRO DATA
-# ======================================
 def get_ohlc(pair: str, interval: str, outputsize=100):
     """
-    Stáhne OHLC data z TwelveData API.
+    Stáhne OHLC data pro daný symbol a timeframe.
     """
     url = "https://api.twelvedata.com/time_series"
     params = {
-        "symbol": pair,
+        "symbol": pair.upper(),
         "interval": interval,
         "apikey": API_KEY,
         "outputsize": outputsize,
@@ -33,9 +27,6 @@ def get_ohlc(pair: str, interval: str, outputsize=100):
     df.set_index("datetime", inplace=True)
     return df
 
-# ======================================
-# VÝPOČET INDIKÁTORŮ
-# ======================================
 def calculate_ema(df, period=50):
     return df["close"].ewm(span=period, adjust=False).mean()
 
@@ -65,9 +56,6 @@ def calculate_adx(df, period=14):
     adx = adx.rolling(period).mean()
     return adx
 
-# ======================================
-# TRENDOVÉ FUNKCE
-# ======================================
 def determine_trend(df):
     ema50 = calculate_ema(df, 50).iloc[-1]
     ema200 = calculate_ema(df, 200).iloc[-1]
@@ -86,9 +74,6 @@ def determine_trend(df):
 
     return trend, signal, {"EMA50": ema50, "EMA200": ema200, "RSI": rsi, "ADX": adx}
 
-# ======================================
-# VÝPOČET SL, TP1, TP2
-# ======================================
 def calculate_sl_tp(df, signal):
     last_close = df["close"].iloc[-1]
     atr = df["high"].rolling(14).max().iloc[-1] - df["low"].rolling(14).min().iloc[-1]
