@@ -4,6 +4,10 @@ import pandas as pd
 API_KEY = "cb61bbdf66f84ba4952d645daec6d807"  # nahraď svým klíčem
 
 def get_ohlc(pair: str, interval: str, outputsize=100):
+    print("DEBUG API pair =", repr(pair))
+    print("DEBUG API interval =", repr(interval))
+    print("DEBUG API KEY =", repr(API_KEY))
+
     """
     Stáhne OHLC data pro daný symbol a timeframe.
     """
