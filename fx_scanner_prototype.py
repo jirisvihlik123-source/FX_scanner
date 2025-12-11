@@ -3,6 +3,7 @@ from PIL import Image, ImageDraw
 import twelvedata_api as td
 import easyocr
 import re
+from chart_generator import draw_chart
 import numpy as np
 
 # ======================================
@@ -180,3 +181,4 @@ else:
 
             except Exception as e:
                 st.error(f"Chyba při načítání dat z API: {e}")
+
