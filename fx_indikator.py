@@ -14,64 +14,31 @@ mode = st.radio("Režim:", ["Screenshot analýza", "Data analýza"])
 # ======================================
 # FUNKCE PRO ANOTACI GRAFU
 # ======================================
-def annotate_chart_with_strategy(image, direction, strategy, rrr, df=None, indicators=[]):
+def annotate_chart_with_strategy(image, df=None, indicators=[], trend=None, sl=None, tp1=None, tp2=None):
     img = image.convert("RGBA")
     draw = ImageDraw.Draw(img)
     w, h = img.size
 
-    # Základní pozice zón
-    sl_y = int(h * 0.78)
-    entry_y = int(h * 0.60)
-    tp1_y = int(h * 0.40)
-    tp2_y = int(h * 0.25)
+    # SL a TP jako rámečky
+    if sl and tp1:
+        sl_y = int(h * (1 - (sl - df['close'].min()) / (df['close'].max() - df['close'].min())))
+        tp1_y = int(h * (1 - (tp1 - df['close'].min()) / (df['close'].max() - df['close'].min())))
+        tp2_y = int(h * (1 - (tp2 - df['close'].min()) / (df['close'].max() - df['close'].min())))
 
-    if direction.startswith("Short"):
-        sl_y = int(h * 0.22)
-        entry_y = int(h * 0.40)
-        tp1_y = int(h * 0.60)
-        tp2_y = int(h * 0.75)
+        draw.rectangle([(0, sl_y-5), (w, sl_y+5)], outline="red", width=3)
+        draw.rectangle([(0, tp1_y-5), (w, tp1_y+5)], outline="green", width=3)
+        draw.rectangle([(0, tp2_y-5), (w, tp2_y+5)], outline="green", width=3)
 
-    if strategy == "Breakout - průraz":
-        if direction.startswith("Long"):
-            entry_y = int(h * 0.50)
-            sl_y = int(h * 0.65)
-            tp1_y = int(h * 0.35)
-        else:
-            entry_y = int(h * 0.50)
-            sl_y = int(h * 0.35)
-            tp1_y = int(h * 0.62)
-
-    if strategy == "Range - obchod v pásmu":
-        sl_y = int(h * 0.70)
-        entry_y = int(h * 0.60)
-        tp1_y = int(h * 0.50)
-        tp2_y = int(h * 0.42)
-
-    def draw_level(y, label, color):
-        draw.line([(0, y), (w, y)], fill=color, width=3)
-        draw.rectangle([(10, y - 24), (180, y)], fill=(0, 0, 0, 180))
-        draw.text((15, y - 20), label, fill="white")
-
-    draw_level(sl_y, "SL zóna", "#ff4d4d")
-    draw_level(entry_y, "ENTRY", "#facc15")
-    draw_level(tp1_y, "TP1", "#22c55e")
-    draw_level(tp2_y, f"TP2 (RRR ~ {rrr:.1f})", "#16a34a")
-
-    # Vykreslení indikátorů do grafu
+    # Indikátory do grafu
     if df is not None and indicators:
         for ind in indicators:
             if ind in df.columns:
-                y = int(h * (1 - (df[ind].iloc[-1] - df[ind].min()) / (df[ind].max() - df[ind].min())))
+                scaled = (df[ind] - df[ind].min()) / (df[ind].max() - df[ind].min())
+                y = (1 - scaled.iloc[-1]) * h
                 draw.line([(0, y), (w, y)], fill="blue", width=2)
                 draw.text((w-60, y-10), ind, fill="blue")
 
-    description = f"""
-### Screenshot analýza
-
-**Směr:** {direction}  
-**Strategie:** {strategy}  
-**RRR:** 1:{rrr:.1f}
-"""
+    description = f"### Analýza grafu\nTrend: {trend}\nSL/TP zakresleno."
     return img, description
 
 # ======================================
@@ -110,7 +77,7 @@ if mode == "Screenshot analýza":
         st.subheader("Analýza")
         if uploaded_file and analyze_button:
             original = Image.open(uploaded_file)
-            annotated, desc = annotate_chart_with_strategy(original, direction, strategy, rrr)
+            annotated, desc = annotate_chart_with_strategy(original)
             st.image(annotated, use_column_width=True)
             st.markdown(desc)
         else:
@@ -137,15 +104,16 @@ else:
                 trend, signal, ind_values = td.determine_trend(df)
                 sl, tp1, tp2 = td.calculate_sl_tp(df, signal)
 
-                # SL/TP i pro neutrální trend
-                if sl is None:
-                    last_close = df["close"].iloc[-1]
-                    atr = df["high"].rolling(14).max().iloc[-1] - df["low"].rolling(14).min().iloc[-1]
-                    sl = last_close - atr
-                    tp1 = last_close + atr
-                    tp2 = last_close + 2 * atr
+                # Pokud trend není vhodný, SL se nezobrazuje a vypíše doporučení
+                if sl is None or trend == "Neutrální":
+                    atr = df['high'].rolling(14).max().iloc[-1] - df['low'].rolling(14).min().iloc[-1]
+                    sl = None
+                    tp1 = None
+                    tp2 = None
+                    st.warning(f"Není vhodná doba pro SL. Doporučená velikost SL: {atr:.5f}")
 
-                annotated, desc = annotate_chart_with_strategy(image, signal, "Auto", 2.0, df=df, indicators=indicators)
+                annotated, desc = annotate_chart_with_strategy(image, df=df, indicators=indicators,
+                                                               trend=trend, sl=sl, tp1=tp1, tp2=tp2)
                 col1, col2 = st.columns(2)
                 with col1:
                     st.subheader("Původní graf")
@@ -165,9 +133,9 @@ else:
 **Indikátory:**  
 {chr(10).join([f"- {k}: {v:.5f}" for k,v in ind_values.items() if k in indicators])}
 
-**SL:** {sl:.5f}  
-**TP1:** {tp1:.5f}  
-**TP2:** {tp2:.5f}
+**SL:** {sl if sl else '–'}  
+**TP1:** {tp1 if tp1 else '–'}  
+**TP2:** {tp2 if tp2 else '–'}
 """)
             except Exception as e:
                 st.error(f"Chyba při načítání nebo výpočtu: {e}")
