@@ -32,7 +32,7 @@ def get_ohlc(pair: str, interval: str, outputsize=100):
     df = pd.DataFrame(data["values"])[::-1]
 
     # Převod jen těch sloupců, které existují
-    for col in ["open","high","low","close","volume"]:
+    for col in ["open", "high", "low", "close", "volume"]:
         if col in df.columns:
             df[col] = df[col].astype(float)
         else:
@@ -66,7 +66,7 @@ def calculate_rsi(df, period=14):
 # ======================================
 def calculate_adx(df, period=14):
     df = df.copy()
-    df["TR"] = df[["high","low","close"]].apply(
+    df["TR"] = df[["high", "low", "close"]].apply(
         lambda x: max(x["high"]-x["low"], abs(x["high"]-x["close"]), abs(x["low"]-x["close"])), axis=1
     )
     df["+DM"] = df["high"].diff()
@@ -120,4 +120,4 @@ def calculate_sl_tp(df, signal):
         sl = tp1 = tp2 = None
 
     return sl, tp1, tp2
-tp2
+
