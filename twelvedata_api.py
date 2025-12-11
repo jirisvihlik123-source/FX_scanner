@@ -30,7 +30,14 @@ def get_ohlc(pair: str, interval: str, outputsize=100):
         raise ValueError(f"Chyba v API: {data}")
 
     df = pd.DataFrame(data["values"])[::-1]
-    df[["open","high","low","close","volume"]] = df[["open","high","low","close","volume"]].astype(float)
+
+    # Převod jen těch sloupců, které existují
+    for col in ["open","high","low","close","volume"]:
+        if col in df.columns:
+            df[col] = df[col].astype(float)
+        else:
+            df[col] = None
+
     df["datetime"] = pd.to_datetime(df["datetime"])
     df.set_index("datetime", inplace=True)
     return df
@@ -113,3 +120,4 @@ def calculate_sl_tp(df, signal):
         sl = tp1 = tp2 = None
 
     return sl, tp1, tp2
+tp2
