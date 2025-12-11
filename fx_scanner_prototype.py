@@ -114,28 +114,31 @@ else:
         if not pair:
             st.error("Nepodařilo se rozpoznat měnový pár z obrázku. Zadej ho ručně.")
         else:
-    try:
-        st.write("DEBUG – symbol odeslaný do API:", pair)
-        st.write("DEBUG – timeframe:", timeframe)
-        st.write("DEBUG – API key:", td.API_KEY)
+    if uploaded_file and analyze_button:
+        try:
+            st.write("DEBUG – symbol odeslaný do API:", pair)
+            st.write("DEBUG – timeframe:", timeframe)
+            st.write("DEBUG – API key:", td.API_KEY)
 
-        df = td.get_ohlc(pair, timeframe)
-        trend, signal, ind_values = td.determine_trend(df)
-        sl, tp1, tp2 = td.calculate_sl_tp(df, signal)
+            df = td.get_ohlc(pair, timeframe)
+            trend, signal, ind_values = td.determine_trend(df)
+            sl, tp1, tp2 = td.calculate_sl_tp(df, signal)
 
-        st.success(f"Použitý pár: {pair}")
-        st.markdown(f"""
-### Výsledek Data analyza
+            st.success(f"Použitý pár: {pair}")
+            st.markdown(f"""
+            ### Výsledek Data analyza
 
-**Trend:** {trend}
-**Signál:** {signal}
+            **Trend:** {trend}  
+            **Signál:** {signal}  
 
-**SL:** {sl}
-**TP1:** {tp1}
-**TP2:** {tp2}
-        """)
-    except Exception as e:
-        st.error(f"Chyba při načítání dat z API: {e}")
+            **SL:** {sl}  
+            **TP1:** {tp1}  
+            **TP2:** {tp2}  
+            """)
+        except Exception as e:
+            st.error(f"Chyba při načítání dat z API: {e}")
+
+
 
 
 
