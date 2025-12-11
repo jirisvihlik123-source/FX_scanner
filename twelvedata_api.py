@@ -1,7 +1,7 @@
 import requests
 import pandas as pd
 
-API_KEY = "8cb61bbdf66f84ba4952d645daec6d807"  # nahraď svým klíčem
+API_KEY = "cb61bbdf66f84ba4952d645daec6d807"  # nahraď svým klíčem
 
 def get_ohlc(pair: str, interval: str, outputsize=100):
     """
