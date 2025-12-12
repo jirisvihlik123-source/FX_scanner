@@ -1,7 +1,7 @@
-streamlit
-pillow
-pandas
-requests
-plotly
-easyocr
-pytesseract
+matplotlib==3.8.2
+numpy==1.26.4
+pandas==2.2.1
+streamlit==1.32.0
+easyocr==1.7.1
+requests==2.31.0
+Pillow==10.2.0
