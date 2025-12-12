@@ -1,95 +1,41 @@
 # fx_indikator.py
-import pandas as pd
 import numpy as np
-from PIL import Image
-import matplotlib.pyplot as plt
-from io import BytesIO
+from PIL import Image, ImageDraw
 
-def generate_indicator_chart(df, indicators, sl=None, tp1=None, tp2=None):
+def annotate_chart_with_strategy(image, df=None, indicators=[], trend=None, sl=None, tp1=None, tp2=None):
     """
-    Vytvoří kombinovaný graf:
-    - svíčky
-    - indikátory dle výběru uživatele
-    - SL/TP zóny
-    Vrací PIL Image.
+    Vykreslí na obrázek grafu indikátory a SL/TP zóny.
+    - image: PIL.Image
+    - df: DataFrame s hodnotami indikátorů
+    - indicators: seznam indikátorů k vykreslení (např. ["EMA50","EMA200","RSI","ADX"])
+    - trend: textový popis trendu
+    - sl, tp1, tp2: hodnoty Stop Loss a Take Profit
     """
+    img = image.convert("RGBA")
+    draw = ImageDraw.Draw(img)
+    w, h = img.size
 
-    if df is None or len(df) < 3:
-        raise ValueError("Nedostatek dat pro vykreslení grafu.")
+    # SL a TP jako červené a zelené rámečky
+    if sl is not None and tp1 is not None and df is not None:
+        min_price = df['close'].min()
+        max_price = df['close'].max()
+        if max_price != min_price:  # zabránění dělení nulou
+            sl_y = int(h * (1 - (sl - min_price) / (max_price - min_price)))
+            tp1_y = int(h * (1 - (tp1 - min_price) / (max_price - min_price)))
+            tp2_y = int(h * (1 - (tp2 - min_price) / (max_price - min_price)))
 
-    # Připravíme obrázek
-    fig, ax = plt.subplots(figsize=(12, 6))
+            draw.rectangle([(0, sl_y-5), (w, sl_y+5)], outline="red", width=3)
+            draw.rectangle([(0, tp1_y-5), (w, tp1_y+5)], outline="green", width=3)
+            draw.rectangle([(0, tp2_y-5), (w, tp2_y+5)], outline="green", width=3)
 
-    # -----------------------------
-    # SVÍČKOVÝ GRAF (OHLC)
-    # -----------------------------
-    for i in range(len(df)):
-        o = df["open"].iloc[i]
-        h = df["high"].iloc[i]
-        l = df["low"].iloc[i]
-        c = df["close"].iloc[i]
+    # Indikátory
+    if df is not None and indicators:
+        for ind in indicators:
+            if ind in df.columns:
+                scaled = (df[ind] - df[ind].min()) / (df[ind].max() - df[ind].min() + 1e-8)
+                y = (1 - scaled.iloc[-1]) * h
+                draw.line([(0, y), (w, y)], fill="blue", width=2)
+                draw.text((w-60, y-10), ind, fill="blue")
 
-        color = "green" if c >= o else "red"
-        ax.plot([i, i], [l, h], color=color, linewidth=1)  # knot
-        ax.add_patch(
-            plt.Rectangle(
-                (i - 0.3, min(o, c)), 0.6, abs(c - o),
-                color=color, alpha=0.6
-            )
-        )
-
-    # -----------------------------
-    # INDIKÁTORY
-    # -----------------------------
-    ind_series = indicators.get("_series", {})
-
-    if "EMA50" in ind_series:
-        ax.plot(ind_series["EMA50"].values, label="EMA50", linewidth=1.5)
-
-    if "EMA200" in ind_series:
-        ax.plot(ind_series["EMA200"].values, label="EMA200", linewidth=1.5)
-
-    if "RSI" in ind_series:
-        rsi = ind_series["RSI"].values
-        # Přepočet do stejného rozsahu jako cena (vizualizace)
-        scaled_rsi = (
-            (rsi - np.nanmin(rsi)) /
-            (np.nanmax(rsi) - np.nanmin(rsi) + 1e-9)
-        ) * (df["close"].max() - df["close"].min()) + df["close"].min()
-        ax.plot(scaled_rsi, label="RSI (scaled)", linewidth=1)
-
-    if "ADX" in ind_series:
-        adx = ind_series["ADX"].values
-        scaled_adx = (
-            (adx - np.nanmin(adx)) /
-            (np.nanmax(adx) - np.nanmin(adx) + 1e-9)
-        ) * (df["close"].max() - df["close"].min()) + df["close"].min()
-        ax.plot(scaled_adx, label="ADX (scaled)", linewidth=1)
-
-    # -----------------------------
-    # SL / TP LINKY
-    # -----------------------------
-    if sl is not None:
-        ax.axhline(sl, color="red", linewidth=1.5, label="SL")
-
-    if tp1 is not None:
-        ax.axhline(tp1, color="green", linewidth=1.5, label="TP1")
-
-    if tp2 is not None:
-        ax.axhline(tp2, color="green", linestyle="--", linewidth=1.5, label="TP2")
-
-    # Osa a legenda
-    ax.set_title("Price Chart with Indicators")
-    ax.set_xlim(0, len(df))
-    ax.legend()
-
-    # -----------------------------
-    # Export jako PIL Image
-    # -----------------------------
-    buf = BytesIO()
-    plt.tight_layout()
-    plt.savefig(buf, format="png", dpi=150)
-    plt.close(fig)
-    buf.seek(0)
-
-    return Image.open(buf).convert("RGBA")
+    description = f"### Analýza grafu\nTrend: {trend}\nSL/TP zakresleno, indikátory: {', '.join(indicators)}"
+    return img, description
