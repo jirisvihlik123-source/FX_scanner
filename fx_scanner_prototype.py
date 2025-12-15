@@ -1,142 +1,194 @@
 import streamlit as st
-from PIL import Image
-import twelvedata_api as td
-import easyocr
-import re
+from PIL import Image, ImageDraw
 import numpy as np
-from fx_indikator import annotate_chart_with_strategy  # nový modul
+import re
+import easyocr
+
+import twelvedata_api as td
+
 
 # ======================================
-# ZÁKLADNÍ NASTAVENÍ STRÁNKY
+# NASTAVENÍ STRÁNKY
 # ======================================
 st.set_page_config(
-    page_title="FX Chart Assistant – screenshot + data",
+    page_title="FX Chart Assistant",
     layout="wide"
 )
-st.title("FX Chart Assistant – screenshot + data")
-st.write("Vyber režim analýzy:")
 
-mode = st.radio("Režim:", ["Screenshot analýza", "Data analýza"])
+st.title("FX Chart Assistant")
+st.write("Screenshot + Data analýza")
+
 
 # ======================================
-# FUNKCE OCR
+# NORMALIZACE SYMBOLU (KRITICKÉ)
 # ======================================
+def normalize_pair(pair_raw: str):
+    if not pair_raw:
+        return None
+
+    pair = pair_raw.strip().upper()
+
+    # EURUSD → EUR/USD
+    if re.fullmatch(r"[A-Z]{6}", pair):
+        pair = pair[:3] + "/" + pair[3:]
+
+    # finální validace
+    if not re.fullmatch(r"[A-Z]{3}/[A-Z]{3}", pair):
+        return None
+
+    return pair
+
+
+# ======================================
+# OCR – DETEKCE PÁRU
+# ======================================
+@st.cache_resource
+def get_ocr_reader():
+    return easyocr.Reader(["en"], gpu=False)
+
+
 def detect_currency_pair(image):
-    reader = easyocr.Reader(['en'])
+    reader = get_ocr_reader()
     img_array = np.array(image)
     results = reader.readtext(img_array)
-    text = " ".join([res[1] for res in results])
-    match = re.search(r'\b([A-Z]{3}/[A-Z]{3})\b', text)
+
+    text = " ".join([r[1] for r in results])
+    match = re.search(r"\b([A-Z]{3}/?[A-Z]{3})\b", text.upper())
+
     if match:
-        return match.group(1).replace("/", "").upper()
+        return match.group(1)
+
     return None
 
+
 # ======================================
-# REŽIM 1 – SCREENSHOT ANALÝZA
+# VYKRESLENÍ SL / TP DO OBRÁZKU
+# ======================================
+def draw_sl_tp(image, df, sl, tp1, tp2):
+    img = image.convert("RGBA")
+    draw = ImageDraw.Draw(img)
+    w, h = img.size
+
+    price_min = df["close"].min()
+    price_max = df["close"].max()
+    price_range = price_max - price_min
+
+    def price_to_y(price):
+        return int(h * (1 - (price - price_min) / price_range))
+
+    def draw_level(y, label, color):
+        draw.rectangle([(0, y - 6), (w, y + 6)], outline=color, width=3)
+        draw.rectangle([(10, y - 28), (160, y - 6)], fill=(0, 0, 0, 180))
+        draw.text((15, y - 24), label, fill="white")
+
+    if sl:
+        draw_level(price_to_y(sl), "STOP LOSS", "red")
+    if tp1:
+        draw_level(price_to_y(tp1), "TP1", "green")
+    if tp2:
+        draw_level(price_to_y(tp2), "TP2", "green")
+
+    return img
+
+
+# ======================================
+# REŽIMY
+# ======================================
+mode = st.radio(
+    "Vyber režim:",
+    ["Screenshot analýza", "Data analýza"]
+)
+
+
+# ======================================
+# SCREENSHOT ANALÝZA
 # ======================================
 if mode == "Screenshot analýza":
     st.header("Screenshot analýza")
-    st.sidebar.header("Nastavení strategie")
 
-    direction = st.sidebar.radio("Směr obchodu:", ["Long (buy)", "Short (sell)"])
-    strategy = st.sidebar.selectbox("Strategie:", [
-        "Swing - pullback",
-        "Breakout - průraz",
-        "Range - obchod v pásmu"
-    ])
-    rrr = st.sidebar.slider("RRR:", 1.0, 4.0, 2.0, 0.5)
+    uploaded_file = st.file_uploader(
+        "Nahraj screenshot grafu",
+        type=["png", "jpg", "jpeg"]
+    )
 
-    uploaded_file = st.file_uploader("Nahraj screenshot grafu:", type=["png", "jpg", "jpeg"])
     analyze_button = st.button("Vygenerovat analýzu")
 
-    col1, col2 = st.columns(2)
+    if uploaded_file and analyze_button:
+        image = Image.open(uploaded_file)
+        st.image(image, use_column_width=True)
+        st.info("Screenshot režim zatím pouze vizuální (bez API).")
 
-    with col1:
-        st.subheader("Původní graf")
-        if uploaded_file:
-            st.image(Image.open(uploaded_file), use_column_width=True)
-
-    with col2:
-        st.subheader("Analýza")
-        if uploaded_file and analyze_button:
-            original = Image.open(uploaded_file)
-            annotated, desc = annotate_chart_with_strategy(original, trend=None)
-            st.image(annotated, use_column_width=True)
-            st.markdown(desc)
-        else:
-            st.info("Nahraj screenshot a klikni na tlačítko.")
 
 # ======================================
-# REŽIM 2 – DATA ANALÝZA
+# DATA ANALÝZA
 # ======================================
 else:
     st.header("Data analýza (TwelveData)")
-    uploaded_file = st.file_uploader("Nahraj screenshot grafu:", type=["png","jpg","jpeg"])
-    timeframe = st.selectbox("Timeframe:", ["1min","5min","15min","1h","4h"])
-    indicators = st.multiselect("Vyber indikátory k vykreslení:", ["EMA50","EMA200","RSI","ADX"], 
-                                default=["EMA50","EMA200","RSI","ADX"])
-    pair_input = st.text_input("Měnový pár (volitelně, OCR):")
+
+    uploaded_file = st.file_uploader(
+        "Nahraj screenshot grafu",
+        type=["png", "jpg", "jpeg"]
+    )
+
+    timeframe = st.selectbox(
+        "Timeframe:",
+        ["1min", "5min", "15min", "1h", "4h"]
+    )
+
+    pair_manual = st.text_input(
+        "Měnový pár (EURUSD nebo EUR/USD – volitelné):"
+    )
+
     analyze_button = st.button("Analyzovat")
 
     if uploaded_file and analyze_button:
         image = Image.open(uploaded_file)
 
-        # OCR detekce měnového páru
-        pair = detect_currency_pair(image) if not pair_input else pair_input.upper()
-        st.write("OCR výstup:", pair)
+        # OCR → fallback na ruční vstup
+        pair_raw = detect_currency_pair(image)
+        if pair_manual:
+            pair_raw = pair_manual
 
-        # Pokud OCR selže, uživatel musí zadat pár ručně
-        pair = st.text_input("Zadej měnový pár ručně:", value=pair if pair else "")
+        pair = normalize_pair(pair_raw)
+
+        st.write("DEBUG – OCR/INPUT:", pair_raw)
+        st.write("DEBUG – NORMALIZOVANÝ SYMBOL:", pair)
+        st.write("DEBUG – TIMEFRAME:", timeframe)
 
         if not pair:
-            st.error("Nepodařilo se rozpoznat měnový pár. Zadej ho ručně.")
-        else:
-            try:
-                # DEBUG
-                st.write("DEBUG – symbol odeslaný do API:", pair)
-                st.write("DEBUG – timeframe:", timeframe)
-                st.write("DEBUG – API key:", td.API_KEY)
+            st.error("Nepodařilo se rozpoznat platný měnový pár.")
+            st.stop()
 
-                # Získání dat OHLC
-                df = td.get_ohlc(pair, timeframe)
+        try:
+            df = td.get_ohlc(pair, timeframe)
 
-                # Určení trendu a signálu
-                trend, signal, ind_values = td.determine_trend(df)
-                sl, tp1, tp2 = td.calculate_sl_tp(df, signal)
+            trend, signal, indicators = td.determine_trend(df)
+            sl, tp1, tp2 = td.calculate_sl_tp(df, signal)
 
-                # Pokud trend není vhodný, SL/TP se nezobrazí
-                if sl is None or trend == "Neutrální":
-                    atr = df['high'].rolling(14).max().iloc[-1] - df['low'].rolling(14).min().iloc[-1]
-                    sl = tp1 = tp2 = None
-                    st.warning(f"Není vhodná doba pro SL. Doporučená velikost SL: {atr:.5f}")
+            col1, col2 = st.columns(2)
 
-                # Generování obrázku s indikátory
-                annotated, desc = annotate_chart_with_strategy(image, df=df, indicators=indicators,
-                                                               trend=trend, sl=sl, tp1=tp1, tp2=tp2)
+            with col1:
+                st.subheader("Původní graf")
+                st.image(image, use_column_width=True)
 
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.subheader("Původní graf")
-                    st.image(image, use_column_width=True)
-                with col2:
-                    st.subheader("Analýza s indikátory")
-                    st.image(annotated, use_column_width=True)
-                    st.markdown(desc)
+            with col2:
+                st.subheader("Analýza")
+                annotated = draw_sl_tp(image, df, sl, tp1, tp2)
+                st.image(annotated, use_column_width=True)
 
-                # Textový výstup
-                st.markdown(f"""
-### Výsledek Data analýzy
+            st.markdown("### Výsledek")
+            st.write("**Pár:**", pair)
+            st.write("**Trend:**", trend)
+            st.write("**Signál:**", signal)
 
-**Použitý pár:** {pair}  
-**Trend:** {trend}  
-**Signal:** {signal}  
+            st.markdown("**Indikátory:**")
+            for k, v in indicators.items():
+                st.write(f"- {k}: {v:.5f}")
 
-**Indikátory:**  
-{chr(10).join([f"- {k}: {v:.5f}" for k,v in ind_values.items() if k in indicators])}
+            if sl:
+                st.success(f"SL: {sl:.5f} | TP1: {tp1:.5f} | TP2: {tp2:.5f}")
+            else:
+                st.warning("Není vhodná doba pro obchod – SL/TP nebyly stanoveny.")
 
-**SL:** {sl if sl else '–'}  
-**TP1:** {tp1 if tp1 else '–'}  
-**TP2:** {tp2 if tp2 else '–'}
-""")
-            except Exception as e:
-                st.error(f"Chyba při načítání nebo výpočtu: {e}")
+        except Exception as e:
+            st.error(f"Chyba při načítání nebo výpočtu: {e}")
