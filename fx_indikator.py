@@ -1,40 +1,82 @@
 # fx_indikator.py
-from PIL import Image, ImageDraw
-import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+import pandas as pd
 
-def annotate_chart_with_strategy(image, df=None, indicators=[], trend=None, sl=None, tp1=None, tp2=None):
-    """
-    Funkce na anotaci grafu:
-    - Vykreslí SL/TP jako červené a zelené rámečky
-    - Vykreslí indikátory z df
-    - Vrátí anotovaný obrázek a popis
-    """
+
+# ==============================
+# PŘEPIS CENY → Y SOUŘADNICE
+# ==============================
+def price_to_y(price, min_price, max_price, height):
+    if max_price == min_price:
+        return height // 2
+    return int((1 - (price - min_price) / (max_price - min_price)) * height)
+
+
+# ==============================
+# HLAVNÍ FUNKCE – ANOTACE GRAFU
+# ==============================
+def annotate_chart_with_strategy(
+    image: Image.Image,
+    df: pd.DataFrame,
+    indicators: list,
+    trend: str,
+    sl=None,
+    tp1=None,
+    tp2=None
+):
     img = image.convert("RGBA")
     draw = ImageDraw.Draw(img)
-    w, h = img.size
+    width, height = img.size
 
-    # SL a TP jako rámečky
-    if sl is not None and tp1 is not None and df is not None:
-        min_price = df['close'].min()
-        max_price = df['close'].max()
+    min_price = df["low"].min()
+    max_price = df["high"].max()
 
-        sl_y = int(h * (1 - (sl - min_price) / (max_price - min_price)))
-        tp1_y = int(h * (1 - (tp1 - min_price) / (max_price - min_price)))
-        tp2_y = int(h * (1 - (tp2 - min_price) / (max_price - min_price)))
+    notes = []
 
-        draw.rectangle([(0, sl_y-3), (w, sl_y+3)], outline="red", width=3)
-        draw.rectangle([(0, tp1_y-3), (w, tp1_y+3)], outline="green", width=3)
-        draw.rectangle([(0, tp2_y-3), (w, tp2_y+3)], outline="green", width=3)
+    # ==============================
+    # SL / TP RÁMEČKY
+    # ==============================
+    if sl and tp1 and tp2 and trend != "Neutrální":
+        sl_y = price_to_y(sl, min_price, max_price, height)
+        tp1_y = price_to_y(tp1, min_price, max_price, height)
+        tp2_y = price_to_y(tp2, min_price, max_price, height)
 
-    # Indikátory do grafu
-    if df is not None and indicators:
-        for ind in indicators:
-            if ind in df.columns:
-                scaled = (df[ind] - df[ind].min()) / (df[ind].max() - df[ind].min())
-                y = (1 - scaled.iloc[-1]) * h
-                draw.line([(0, y), (w, y)], fill="blue", width=2)
-                draw.text((w-60, y-10), ind, fill="blue")
+        draw.rectangle([(0, sl_y - 6), (width, sl_y + 6)], outline="red", width=3)
+        draw.rectangle([(0, tp1_y - 6), (width, tp1_y + 6)], outline="green", width=3)
+        draw.rectangle([(0, tp2_y - 6), (width, tp2_y + 6)], outline="green", width=3)
 
-    description = f"### Analýza grafu\nTrend: {trend}\nSL/TP zakresleno."
-    return img, description
+        notes.append("SL / TP zakresleno do grafu.")
+    else:
+        notes.append("Nevhodná situace pro zakreslení SL/TP – nízká kvalita signálu.")
 
+    # ==============================
+    # INDIKÁTORY (HORIZONTÁLNÍ ÚROVNĚ)
+    # ==============================
+    color_map = {
+        "EMA50": "blue",
+        "EMA200": "purple",
+        "RSI": "orange",
+        "ADX": "brown"
+    }
+
+    for ind in indicators:
+        if ind not in df.columns:
+            continue
+
+        value = df[ind].iloc[0]
+        y = price_to_y(value, min_price, max_price, height)
+
+        draw.line([(0, y), (width, y)], fill=color_map.get(ind, "gray"), width=2)
+        draw.text((10, y - 12), f"{ind}: {value:.2f}", fill=color_map.get(ind, "gray"))
+
+    # ==============================
+    # TEXTOVÝ POPIS
+    # ==============================
+    description = f"""
+### Výsledek analýzy grafu
+
+**Trend:** {trend}
+
+""" + "\n".join(f"- {n}" for n in notes)
+
+    return img, description.strip()
