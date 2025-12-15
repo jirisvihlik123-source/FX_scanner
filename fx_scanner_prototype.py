@@ -3,9 +3,10 @@ import streamlit as st
 from PIL import Image
 import numpy as np
 import easyocr
+import re
 
 import twelvedata_api as td
-from fx_indikator import draw_analysis_on_image
+from fx_indikator import annotate_chart_with_strategy
 
 
 # ======================================
@@ -13,126 +14,153 @@ from fx_indikator import draw_analysis_on_image
 # ======================================
 st.set_page_config(page_title="FX Chart Assistant", layout="wide")
 st.title("FX Chart Assistant")
-st.write("Screenshot + Data analýza (SAFE verze)")
-
-# ======================================
-# POVOLENÉ MĚNOVÉ PÁRY (WHITELIST)
-# ======================================
-ALLOWED_PAIRS = [
-    "EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF",
-    "AUD/USD", "NZD/USD", "USD/CAD",
-    "EUR/GBP", "EUR/JPY"
-]
+st.write("Screenshot + Data analýza (bez zbytečného zahlcení grafu)")
 
 
 # ======================================
-# OCR – pouze návrh
+# OCR – DETEKCE MĚNOVÉHO PÁRU
 # ======================================
 @st.cache_resource
-def load_ocr():
-    return easyocr.Reader(['en'], gpu=False)
+def get_ocr_reader():
+    return easyocr.Reader(["en"], gpu=False)
 
 
-def ocr_suggest_pair(image: Image.Image):
-    reader = load_ocr()
-    results = reader.readtext(np.array(image))
-    text = " ".join([r[1].upper() for r in results])
+def detect_currency_pair(image):
+    reader = get_ocr_reader()
+    img_array = np.array(image)
+    results = reader.readtext(img_array)
 
-    for pair in ALLOWED_PAIRS:
-        if pair.replace("/", "") in text:
-            return pair
+    text = " ".join(r[1] for r in results)
+    match = re.search(r"\b([A-Z]{3})/?([A-Z]{3})\b", text)
+
+    if match:
+        return f"{match.group(1)}{match.group(2)}"
+
     return None
 
 
 # ======================================
-# UI – REŽIM
+# REŽIM
 # ======================================
 mode = st.radio("Režim:", ["Screenshot analýza", "Data analýza"])
 
 
 # ======================================
-# REŽIM 1 – SCREENSHOT (jednoduchý)
+# SCREENSHOT ANALÝZA (JEN OBRÁZEK)
 # ======================================
 if mode == "Screenshot analýza":
-    st.info("Tento režim je pouze vizuální – bez API.")
+    st.header("Screenshot analýza")
 
-    uploaded = st.file_uploader("Nahraj screenshot grafu", type=["png", "jpg", "jpeg"])
-    if uploaded:
-        img = Image.open(uploaded)
-        st.image(img, use_column_width=True)
-
-
-# ======================================
-# REŽIM 2 – DATA ANALÝZA (SAFE)
-# ======================================
-else:
-    st.header("Data analýza (TwelveData – SAFE)")
-
-    uploaded = st.file_uploader("Nahraj screenshot grafu", type=["png", "jpg", "jpeg"])
-    timeframe = st.selectbox("Timeframe", ["1min", "5min", "15min", "1h", "4h"])
-
-    indicators = st.multiselect(
-        "Zobrazit indikátory v obrázku",
-        ["EMA50", "EMA200", "RSI", "ADX"],
-        default=["EMA50", "EMA200", "RSI", "ADX"]
+    uploaded_file = st.file_uploader(
+        "Nahraj screenshot grafu", type=["png", "jpg", "jpeg"]
     )
 
-    if uploaded:
-        image = Image.open(uploaded)
+    if uploaded_file:
+        image = Image.open(uploaded_file)
 
-        # OCR návrh
-        suggested_pair = ocr_suggest_pair(image)
-        if suggested_pair:
-            st.success(f"OCR návrh: {suggested_pair}")
-        else:
-            st.warning("OCR nenašlo měnový pár")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Původní graf")
+            st.image(image, use_column_width=True)
 
-        # JEDINÝ zdroj pravdy
-        pair = st.selectbox(
-            "Vyber měnový pár (POVINNÉ)",
-            ALLOWED_PAIRS,
-            index=ALLOWED_PAIRS.index(suggested_pair)
-            if suggested_pair in ALLOWED_PAIRS else 0
-        )
+        with col2:
+            st.subheader("Info")
+            st.info(
+                "Screenshot analýza je čistě vizuální.\n"
+                "Pro indikátory a SL/TP použij Data analýzu."
+            )
 
-        analyze = st.button("Analyzovat")
 
-        if analyze:
-            try:
-                df = td.get_ohlc(pair, timeframe)
-                trend, signal, ind_vals = td.determine_trend(df)
-                sl, tp1, tp2 = td.calculate_sl_tp(df, signal)
+# ======================================
+# DATA ANALÝZA
+# ======================================
+else:
+    st.header("Data analýza (TwelveData)")
 
-                annotated, note = draw_analysis_on_image(
-                    image=image,
-                    df=df,
-                    indicators=indicators,
-                    trend=trend,
-                    sl=sl,
-                    tp1=tp1,
-                    tp2=tp2
-                )
+    uploaded_file = st.file_uploader(
+        "Nahraj screenshot grafu", type=["png", "jpg", "jpeg"]
+    )
 
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.subheader("Původní graf")
-                    st.image(image, use_column_width=True)
+    timeframe = st.selectbox(
+        "Timeframe", ["1min", "5min", "15min", "1h", "4h"]
+    )
 
-                with col2:
-                    st.subheader("Analýza")
-                    st.image(annotated, use_column_width=True)
-                    st.markdown(note)
+    indicators = st.multiselect(
+        "Indikátory k vykreslení",
+        ["EMA50", "EMA200", "RSI", "ADX"],
+        default=["EMA50", "EMA200"]
+    )
 
-                st.markdown("### Výsledky")
-                st.write("Trend:", trend)
-                st.write("Signál:", signal)
-                for k, v in ind_vals.items():
+    manual_pair = st.text_input(
+        "Měnový pár (např. EURUSD) – přepíše OCR"
+    )
+
+    analyze_button = st.button("Analyzovat")
+
+    if uploaded_file and analyze_button:
+        image = Image.open(uploaded_file)
+
+        # ===== SYMBOL =====
+        pair = manual_pair.strip().upper()
+        if not pair:
+            pair = detect_currency_pair(image)
+
+        if not pair or len(pair) != 6:
+            st.error("Nelze určit měnový pár. Zadej ho ručně (např. EURUSD).")
+            st.stop()
+
+        st.write(f"Použitý symbol: **{pair}**")
+
+        # ===== DATA =====
+        try:
+            df = td.get_ohlc(pair, timeframe)
+            trend, signal, ind_values = td.determine_trend(df)
+            sl, tp1, tp2 = td.calculate_sl_tp(df, signal)
+
+            # ===== PŘIDÁNÍ INDIKÁTORŮ DO DF =====
+            if "EMA50" in indicators:
+                df["EMA50"] = td.calculate_ema(df, 50)
+            if "EMA200" in indicators:
+                df["EMA200"] = td.calculate_ema(df, 200)
+            if "RSI" in indicators:
+                df["RSI"] = td.calculate_rsi(df)
+            if "ADX" in indicators:
+                df["ADX"] = td.calculate_adx(df)
+
+            annotated, desc = annotate_chart_with_strategy(
+                image=image,
+                df=df,
+                indicators=indicators,
+                trend=trend,
+                sl=sl,
+                tp1=tp1,
+                tp2=tp2
+            )
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("Původní graf")
+                st.image(image, use_column_width=True)
+
+            with col2:
+                st.subheader("Výsledek")
+                st.image(annotated, use_column_width=True)
+                st.markdown(desc)
+
+            st.markdown("### Detail signálu")
+            st.write(f"Trend: **{trend}**")
+            st.write(f"Signál: **{signal}**")
+
+            for k, v in ind_values.items():
+                if k in indicators:
                     st.write(f"{k}: {v:.5f}")
 
-                st.write("SL:", sl)
-                st.write("TP1:", tp1)
-                st.write("TP2:", tp2)
+            if sl:
+                st.write(f"SL: {sl:.5f}")
+                st.write(f"TP1: {tp1:.5f}")
+                st.write(f"TP2: {tp2:.5f}")
+            else:
+                st.warning("Signál není dostatečně silný pro SL / TP.")
 
-            except Exception as e:
-                st.error(f"Chyba analýzy: {e}")
-
+        except Exception as e:
+            st.error(f"Chyba během zpracování: {e}")
